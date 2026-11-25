@@ -51,26 +51,36 @@ SKEPTIC_ROLE = (
 )
 
 
-def default_actors(env: dict | None = None) -> list[dict]:
+#: Значения из --env-file держим отдельно: окружение процесса не трогаем.
+ENV: dict[str, str] = {}
+
+
+def key(name: str, default: str = "") -> str:
+    """Значение по имени: сначала из --env-file, потом из окружения процесса."""
+    if name in ENV:
+        return ENV[name]
+    return os.environ.get(name, default)
+
+
+def default_actors() -> list[dict]:
     """Два участника по умолчанию: DeepSeek напрямую + второй OpenAI-совместимый эндпоинт."""
-    env = env if env is not None else os.environ
     actors = [
         {
             "name": "Оператор",
-            "base": env.get("DEBATE_A_BASE", "https://api.deepseek.com/v1"),
-            "key_env": env.get("DEBATE_A_KEY_ENV", "DEEPSEEK_API_KEY"),
-            "model": env.get("DEBATE_A_MODEL", "deepseek-chat"),
+            "base": key("DEBATE_A_BASE", "https://api.deepseek.com/v1"),
+            "key_env": key("DEBATE_A_KEY_ENV", "DEEPSEEK_API_KEY"),
+            "model": key("DEBATE_A_MODEL", "deepseek-chat"),
             "role": OPERATOR_ROLE,
         }
     ]
-    base = env.get("DEBATE_B_BASE", "")
+    base = key("DEBATE_B_BASE")
     if base:
         actors.append(
             {
                 "name": "Скептик",
                 "base": base,
                 "key_env": "DEBATE_B_KEY",
-                "model": env.get("DEBATE_B_MODEL", ""),
+                "model": key("DEBATE_B_MODEL"),
                 "role": SKEPTIC_ROLE,
             }
         )
@@ -78,17 +88,17 @@ def default_actors(env: dict | None = None) -> list[dict]:
 
 
 def load_env(path: str) -> None:
-    """KEY=VALUE построчно; уже заданные переменные не перезаписываются."""
+    """KEY=VALUE построчно в ENV; уже заданные значения не перезаписываются."""
     for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if s and not s.startswith("#") and "=" in s:
             k, v = s.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+            ENV.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-def _once(base: str, key: str, model: str, messages: list, max_tokens: int) -> tuple[str, str]:
+def _once(base: str, api_key: str, model: str, messages: list, max_tokens: int) -> tuple[str, str]:
     """Один вызов. Возвращает (контент, finish_reason); при сбое — («СБОЙ: ...», "")."""
-    if not key:
+    if not api_key:
         return "СБОЙ: нет ключа для " + model, ""
     if not model:
         return "СБОЙ: не задана модель", ""
@@ -98,7 +108,7 @@ def _once(base: str, key: str, model: str, messages: list, max_tokens: int) -> t
     req = urllib.request.Request(
         base.rstrip("/") + "/chat/completions",
         data=body,
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
     )
     last = ""
     for attempt in range(3):
@@ -129,14 +139,14 @@ def _once(base: str, key: str, model: str, messages: list, max_tokens: int) -> t
     return "СБОЙ: %s" % last, ""
 
 
-def call(base: str, key: str, model: str, messages: list, max_tokens: int | None = None) -> str:
+def call(base: str, api_key: str, model: str, messages: list, max_tokens: int | None = None) -> str:
     best = ""
     if max_tokens:
         ladder = tuple(min(max_tokens * (2 ** i), 16000) for i in range(3))
     else:
         ladder = BUDGET_LADDER
     for budget in ladder:
-        text, finish = _once(base, key, model, messages, budget)
+        text, finish = _once(base, api_key, model, messages, budget)
         if text.startswith("СБОЙ"):
             return text
         if len(text) > len(best):
@@ -192,7 +202,7 @@ def main() -> int:
         for actor in actors:
             text = call(
                 actor["base"],
-                os.environ.get(actor["key_env"], ""),
+                key(actor["key_env"]),
                 actor["model"],
                 [{"role": "user", "content": "ответь одним словом: ок"}],
                 max_tokens=20,
@@ -218,7 +228,7 @@ def main() -> int:
             print("=" * 70)
             print("РОЛЬ: %s  |  %s / %s  |  ключ: %s"
                   % (actor["name"], actor["base"], actor["model"], actor["key_env"]))
-            print("КЛЮЧ НАЙДЕН:", bool(os.environ.get(actor["key_env"], "")))
+            print("КЛЮЧ НАЙДЕН:", bool(key(actor["key_env"])))
             for m in build_messages(actor, topic, "", 1, a.rounds):
                 print("\n[" + m["role"] + "]\n" + m["content"])
         print("=" * 70)
@@ -258,7 +268,7 @@ def main() -> int:
                 "### %s (круг %d):\n%s" % (m["who"], m["round"], m["text"][:1100]) for m in history
             )
             msgs = build_messages(actor, topic, ctx, rnd, a.rounds)
-            text = call(actor["base"], os.environ.get(actor["key_env"], ""), actor["model"], msgs,
+            text = call(actor["base"], key(actor["key_env"]), actor["model"], msgs,
                         a.max_tokens or None)
             transcript.append({"round": rnd, "who": actor["name"], "text": text})
             texts[actor["name"]] = text
