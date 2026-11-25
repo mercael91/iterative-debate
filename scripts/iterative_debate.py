@@ -285,7 +285,10 @@ def main() -> int:
             print("СТОП: " + aborted + "; проверь --probe", flush=True)
             break
         answered = [t for t in texts.values() if not t.startswith("СБОЙ")]
-        if rnd >= a.min_rounds and answered and all(NO_ARGUMENT.search(t) for t in answered):
+        # сходиться можно только когда ответили ВСЕ: иначе один живой участник объявит
+        # согласие за мёртвого, и fail-fast до него не дойдёт
+        if (rnd >= a.min_rounds and len(answered) == len(actors)
+                and all(NO_ARGUMENT.search(t) for t in answered)):
             converged_at = rnd
             print("сошлись на круге %d" % rnd, flush=True)
             break
