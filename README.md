@@ -37,7 +37,7 @@ python scripts/iterative_debate.py --topic-file topic.md --dry-run --config acto
 
 # 3. боевой прогон (в фоне — reasoning-модели отвечают по 20–60 с)
 python scripts/iterative_debate.py --topic-file topic.md --config actors.json \
-       --env-file .env --rounds 20 --min-rounds 4 --out-dir data/debates
+       --env-file .env --rounds 20 --min-rounds 4 --out-dir out
 ```
 
 `topic.md` — вопрос и ФАКТЫ с числами, с прямым запретом выдумывать другие цифры.

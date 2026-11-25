@@ -84,7 +84,7 @@ python scripts/iterative_debate.py --topic-file topic.md --dry-run --config acto
 
 # 3. боевой прогон — в фоне с уведомлением, не в терминале
 python scripts/iterative_debate.py --topic-file topic.md --config actors.json \
-       --env-file .env --rounds 20 --min-rounds 4 --out-dir data/debates
+       --env-file .env --rounds 20 --min-rounds 4 --out-dir out
 ```
 
 Роли задаются конфигом (шаблон — `templates/actors.example.json`): список объектов
